@@ -158,12 +158,7 @@ impl App {
 
     async fn on_key(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Char('q') => {
-                if self.filter_mode {
-                    self.filter_mode = false;
-                    self.filter_input.clear();
-                    self.apply_filter();
-                }
+            KeyCode::Char('Q') => {
             }
             KeyCode::Char('b') => match self.state {
                 AppState::TopicDetail => {
@@ -189,7 +184,13 @@ impl App {
                 self.apply_filter();
             }
             KeyCode::Char('/') => {
-                self.filter_mode = true;
+                if self.filter_mode {
+                    self.filter_mode = false;
+                    self.filter_input.clear();
+                    self.apply_filter();
+                } else {
+                    self.filter_mode = true;
+                }
             }
             KeyCode::Esc => {
                 self.filter_mode = false;
@@ -462,7 +463,7 @@ fn main() -> Result<()> {
         // Handle input with a timeout
         if event::poll(Duration::from_millis(10))? {
             if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') && key.modifiers.is_empty() && !app.filter_mode {
+                if key.code == KeyCode::Char('Q') && !app.filter_mode {
                     break;
                 }
                 // Call on_key in the async runtime
@@ -494,10 +495,10 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
         .split(f.size());
 
     let title = match app.state {
-        AppState::Topics => "Topics (T) | Principals (P) | Filter (/) | Quit (q)",
-        AppState::TopicDetail => "Topic Detail (b to go back) | Quit (q)",
-        AppState::Principals => "Topics (T) | Principals (P) | Filter (/) | Quit (q)",
-        AppState::PrincipalACLs => "Principal ACLs (b to go back) | Quit (q)",
+        AppState::Topics => "Topics (T) | Principals (P) | Filter (/) | Quit (Q)",
+        AppState::TopicDetail => "Topic Detail (b to go back) | Quit (Q)",
+        AppState::Principals => "Topics (T) | Principals (P) | Filter (/) | Quit (Q)",
+        AppState::PrincipalACLs => "Principal ACLs (b to go back) | Quit (Q)",
     };
 
     let title = Paragraph::new(title)
@@ -512,7 +513,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
         "".to_string()
     };
     let filter = Paragraph::new(filter_text)
-        .style(Style::default().fg(Color::Yellow))
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(filter, chunks[1]);
 
