@@ -13,12 +13,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
-use tui::{
-    backend::{Backend, CrosstermBackend},
+use ratatui::{
+    backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    text::Span,
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame, Terminal,
 };
 
@@ -355,7 +355,7 @@ fn main() -> Result<()> {
 
             // Display error and wait for user input
             terminal.draw(|f| {
-                let size = f.size();
+                let size = f.area();
                 let block = Block::default()
                     .title("Kafka Connection Error")
                     .borders(Borders::ALL);
@@ -365,7 +365,7 @@ fn main() -> Result<()> {
                 );
                 let paragraph = Paragraph::new(error_text)
                     .block(block)
-                    .wrap(tui::widgets::Wrap { trim: true });
+                    .wrap(Wrap { trim: true });
                 f.render_widget(paragraph, size);
             })?;
 
@@ -434,7 +434,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
+fn ui(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -443,7 +443,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
             Constraint::Length(3),
             Constraint::Min(0),
         ])
-        .split(f.size());
+        .split(f.area());
 
     let title = match app.state {
         AppState::Topics => "Topics (T) | Filter (/) | Quit (Q)",
@@ -485,7 +485,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
                     } else {
                         Style::default()
                     };
-                    ListItem::new(vec![Spans::from(Span::raw(t))]).style(style)
+                    ListItem::new(Span::raw(t)).style(style)
                 })
                 .collect();
 
@@ -519,7 +519,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
                         .title("Topic Configuration")
                         .borders(Borders::ALL),
                 )
-                .wrap(tui::widgets::Wrap { trim: true });
+                .wrap(Wrap { trim: true });
 
             f.render_widget(config, right_panels[0]);
 
@@ -560,7 +560,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
                         .title("Live Tail (Last 10 Messages)")
                         .borders(Borders::ALL),
                 )
-                .wrap(tui::widgets::Wrap { trim: true })
+                .wrap(Wrap { trim: true })
                 .scroll((app.tail_scroll, 0));
 
             f.render_widget(tail, right_panels[1]);
@@ -579,7 +579,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
                         } else {
                             Style::default()
                         };
-                        ListItem::new(vec![Spans::from(Span::raw(format!("{}: {}", k, v)))])
+                        ListItem::new(Span::raw(format!("{}: {}", k, v)))
                             .style(style)
                     })
                     .collect();

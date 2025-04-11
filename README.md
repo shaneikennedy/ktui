@@ -78,5 +78,5 @@ The application automatically tails the currently selected topic, showing the mo
 ## Acknowledgments
 
 - [rdkafka](https://github.com/fede1024/rust-rdkafka) - Rust client for Apache Kafka
-- [tui-rs](https://github.com/fdehau/tui-rs) - Terminal user interface library
+- [ratatui](https://github.com/ratatui/ratatui) - Terminal user interface library
 - [crossterm](https://github.com/crossterm-rs/crossterm) - Cross-platform terminal manipulation library
