@@ -31,11 +31,6 @@ struct App {
     selected_topic_index: Option<usize>,
     topic_config: Option<Vec<(String, String)>>,
     selected_config_index: Option<usize>,
-    principals: Vec<String>,
-    filtered_principals: Vec<String>,
-    selected_principal_index: Option<usize>,
-    acls: Vec<String>,
-    selected_acl_index: Option<usize>,
     state: AppState,
     filter_input: String,
     filter_mode: bool,
@@ -49,27 +44,18 @@ struct App {
 enum AppState {
     Topics,
     TopicDetail,
-    Principals,
-    PrincipalACLs,
 }
 
 impl App {
     fn new(kafka_client: KafkaClient) -> Result<Self> {
         let topics = kafka_client.list_topics()?;
-        let principals = kafka_client.list_principals()?;
-
-        Ok(App {
+        let app = App {
             kafka_client,
             topics: topics.clone(),
             filtered_topics: topics,
             selected_topic_index: Some(0),
             topic_config: None,
             selected_config_index: None,
-            principals: principals.clone(),
-            filtered_principals: principals,
-            selected_principal_index: None,
-            acls: Vec::new(),
-            selected_acl_index: None,
             state: AppState::Topics,
             filter_input: String::new(),
             filter_mode: false,
@@ -78,7 +64,9 @@ impl App {
             tail_scroll: 0,
             tail_running: false,
             tail_topic: None,
-        })
+        };
+
+        Ok(app)
     }
 
     async fn update_topic_config(&mut self) {
@@ -88,17 +76,6 @@ impl App {
                     let config_vec: Vec<(String, String)> = config.into_iter().collect();
                     self.topic_config = Some(config_vec);
                     self.selected_config_index = Some(0);
-                }
-            }
-        }
-    }
-
-    async fn update_principal_acls(&mut self) {
-        if let Some(idx) = self.selected_principal_index {
-            if let Some(principal) = self.filtered_principals.get(idx) {
-                if let Ok(acls) = self.kafka_client.get_principal_acls(principal) {
-                    self.acls = acls;
-                    self.selected_acl_index = Some(0);
                 }
             }
         }
@@ -132,7 +109,7 @@ impl App {
             let (tx, mut rx) = mpsc::channel(100);
 
             // Start consuming messages
-            if let Ok(_) = self.kafka_client.consume_topic_messages(&topic, tx).await {
+            if self.kafka_client.consume_topic_messages(&topic, tx).await.is_ok() {
                 self.tail_running = true;
                 self.tail_topic = Some(topic.clone());
 
@@ -160,25 +137,11 @@ impl App {
         match key {
             KeyCode::Char('Q') => {
             }
-            KeyCode::Char('b') => match self.state {
-                AppState::TopicDetail => {
-                    self.state = AppState::Topics;
-                }
-                AppState::PrincipalACLs => {
-                    self.state = AppState::Principals;
-                }
-                _ => {}
+            KeyCode::Char('b') => if let AppState::TopicDetail = self.state {
+                self.state = AppState::Topics;
             },
             KeyCode::Char('T') => {
                 self.state = AppState::Topics;
-                self.filter_mode = false;
-                self.filter_input.clear();
-                self.apply_filter();
-            }
-            KeyCode::Char('P') => {
-                self.state = AppState::Principals;
-                self.selected_principal_index = Some(0);
-                self.acls = Vec::new();
                 self.filter_mode = false;
                 self.filter_input.clear();
                 self.apply_filter();
@@ -233,26 +196,6 @@ impl App {
                         }
                     }
                 }
-                AppState::Principals => {
-                    if let Some(idx) = self.selected_principal_index {
-                        if idx > 0 {
-                            self.selected_principal_index = Some(idx - 1);
-                        } else {
-                            self.selected_principal_index =
-                                Some(self.filtered_principals.len() - 1);
-                        }
-                        self.update_principal_acls().await;
-                    }
-                }
-                AppState::PrincipalACLs => {
-                    if let Some(idx) = self.selected_acl_index {
-                        if idx > 0 {
-                            self.selected_acl_index = Some(idx - 1);
-                        } else {
-                            self.selected_acl_index = Some(self.acls.len() - 1);
-                        }
-                    }
-                }
             },
             KeyCode::Down => match self.state {
                 AppState::Topics => {
@@ -278,108 +221,48 @@ impl App {
                         }
                     }
                 }
-                AppState::Principals => {
-                    if let Some(idx) = self.selected_principal_index {
-                        if idx < self.filtered_principals.len() - 1 {
-                            self.selected_principal_index = Some(idx + 1);
-                        } else {
-                            self.selected_principal_index = Some(0);
-                        }
-                        self.update_principal_acls().await;
-                    }
-                }
-                AppState::PrincipalACLs => {
-                    if let Some(idx) = self.selected_acl_index {
-                        if idx < self.acls.len() - 1 {
-                            self.selected_acl_index = Some(idx + 1);
-                        } else {
-                            self.selected_acl_index = Some(0);
-                        }
-                    }
-                }
             },
-            KeyCode::Enter => match self.state {
-                AppState::Topics => {
-                    if let Some(idx) = self.selected_topic_index {
-                        if let Some(topic) = self.filtered_topics.get(idx) {
-                            if let Ok(config) = self.kafka_client.get_topic_config(topic).await {
-                                let config_vec: Vec<(String, String)> =
-                                    config.into_iter().collect();
-                                self.topic_config = Some(config_vec);
-                                self.selected_config_index = Some(0);
-                                self.state = AppState::TopicDetail;
-                            }
+            KeyCode::Enter => if let AppState::Topics = self.state {
+                if let Some(idx) = self.selected_topic_index {
+                    if let Some(topic) = self.filtered_topics.get(idx) {
+                        if let Ok(config) = self.kafka_client.get_topic_config(topic).await {
+                            let config_vec: Vec<(String, String)> =
+                                config.into_iter().collect();
+                            self.topic_config = Some(config_vec);
+                            self.selected_config_index = Some(0);
+                            self.state = AppState::TopicDetail;
                         }
                     }
                 }
-                AppState::Principals => {
-                    if let Some(idx) = self.selected_principal_index {
-                        if let Some(principal) = self.filtered_principals.get(idx) {
-                            if let Ok(acls) = self.kafka_client.get_principal_acls(principal) {
-                                self.acls = acls;
-                                self.selected_acl_index = Some(0);
-                                self.state = AppState::PrincipalACLs;
-                            }
-                        }
-                    }
-                }
-                _ => {}
             },
             _ => {}
         }
     }
 
     fn apply_filter(&mut self) {
-        match self.state {
-            AppState::Topics => {
-                if self.filter_input.is_empty() {
-                    self.filtered_topics = self.topics.clone();
-                } else {
-                    self.filtered_topics = self
-                        .topics
-                        .iter()
-                        .filter(|t| t.to_lowercase().contains(&self.filter_input.to_lowercase()))
-                        .cloned()
-                        .collect();
-                }
-                // Reset selection if it's out of bounds
-                if let Some(idx) = self.selected_topic_index {
-                    if idx >= self.filtered_topics.len() {
-                        self.selected_topic_index = if self.filtered_topics.is_empty() {
-                            None
-                        } else {
-                            Some(0)
-                        };
-                    }
-                } else if !self.filtered_topics.is_empty() {
-                    self.selected_topic_index = Some(0);
-                }
+        if let AppState::Topics = self.state {
+            if self.filter_input.is_empty() {
+                self.filtered_topics = self.topics.clone();
+            } else {
+                self.filtered_topics = self
+                    .topics
+                    .iter()
+                    .filter(|t| t.to_lowercase().contains(&self.filter_input.to_lowercase()))
+                    .cloned()
+                    .collect();
             }
-            AppState::Principals => {
-                if self.filter_input.is_empty() {
-                    self.filtered_principals = self.principals.clone();
-                } else {
-                    self.filtered_principals = self
-                        .principals
-                        .iter()
-                        .filter(|p| p.to_lowercase().contains(&self.filter_input.to_lowercase()))
-                        .cloned()
-                        .collect();
+            // Reset selection if it's out of bounds
+            if let Some(idx) = self.selected_topic_index {
+                if idx >= self.filtered_topics.len() {
+                    self.selected_topic_index = if self.filtered_topics.is_empty() {
+                        None
+                    } else {
+                        Some(0)
+                    };
                 }
-                // Reset selection if it's out of bounds
-                if let Some(idx) = self.selected_principal_index {
-                    if idx >= self.filtered_principals.len() {
-                        self.selected_principal_index = if self.filtered_principals.is_empty() {
-                            None
-                        } else {
-                            Some(0)
-                        };
-                    }
-                } else if !self.filtered_principals.is_empty() {
-                    self.selected_principal_index = Some(0);
-                }
+            } else if !self.filtered_topics.is_empty() {
+                self.selected_topic_index = Some(0);
             }
-            _ => {}
         }
     }
 }
@@ -460,6 +343,7 @@ fn main() -> Result<()> {
         // Draw the UI
         terminal.draw(|f| ui(f, &app))?;
 
+        runtime.block_on(app.start_tail());
         // Handle input with a timeout
         if event::poll(Duration::from_millis(10))? {
             if let Event::Key(key) = event::read()? {
@@ -495,10 +379,8 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
         .split(f.size());
 
     let title = match app.state {
-        AppState::Topics => "Topics (T) | Principals (P) | Filter (/) | Quit (Q)",
+        AppState::Topics => "Topics (T) | Filter (/) | Quit (Q)",
         AppState::TopicDetail => "Topic Detail (b to go back) | Quit (Q)",
-        AppState::Principals => "Topics (T) | Principals (P) | Filter (/) | Quit (Q)",
-        AppState::PrincipalACLs => "Principal ACLs (b to go back) | Quit (Q)",
     };
 
     let title = Paragraph::new(title)
@@ -646,85 +528,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
                     .highlight_symbol("> ");
 
                 f.render_widget(config_list, chunks[2]);
-            }
-        }
-        AppState::Principals => {
-            let content_chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-                .split(chunks[2]);
-
-            // Principals list on the left
-            let items: Vec<ListItem> = app
-                .filtered_principals
-                .iter()
-                .enumerate()
-                .map(|(i, p)| {
-                    let style = if Some(i) == app.selected_principal_index {
-                        Style::default()
-                            .fg(Color::Black)
-                            .bg(Color::White)
-                            .add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default()
-                    };
-                    ListItem::new(vec![Spans::from(Span::raw(p))]).style(style)
-                })
-                .collect();
-
-            let principals = List::new(items)
-                .block(Block::default().title("Principals").borders(Borders::ALL))
-                .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-                .highlight_symbol("> ");
-
-            f.render_widget(principals, content_chunks[0]);
-
-            // ACLs on the right
-            let acls_text = if !app.acls.is_empty() {
-                app.acls.join("\n")
-            } else {
-                "Select a principal to view its ACLs".to_string()
-            };
-
-            let acls = Paragraph::new(acls_text)
-                .block(
-                    Block::default()
-                        .title("Principal ACLs")
-                        .borders(Borders::ALL),
-                )
-                .wrap(tui::widgets::Wrap { trim: true });
-
-            f.render_widget(acls, content_chunks[1]);
-        }
-        AppState::PrincipalACLs => {
-            if !app.acls.is_empty() {
-                let items: Vec<ListItem> = app
-                    .acls
-                    .iter()
-                    .enumerate()
-                    .map(|(i, a)| {
-                        let style = if Some(i) == app.selected_acl_index {
-                            Style::default()
-                                .fg(Color::Black)
-                                .bg(Color::White)
-                                .add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default()
-                        };
-                        ListItem::new(vec![Spans::from(Span::raw(a))]).style(style)
-                    })
-                    .collect();
-
-                let acls = List::new(items)
-                    .block(
-                        Block::default()
-                            .title("Principal ACLs")
-                            .borders(Borders::ALL),
-                    )
-                    .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-                    .highlight_symbol("> ");
-
-                f.render_widget(acls, chunks[2]);
             }
         }
     }

@@ -52,43 +52,14 @@ impl KafkaClient {
             .await?;
 
         let mut result = HashMap::new();
-        if let Some(config) = configs.first() {
-            if let Ok(config) = config {
-                for entry in &config.entries {
-                    if let Some(value) = &entry.value {
-                        result.insert(entry.name.to_string(), value.to_string());
-                    }
+        if let Some(Ok(config)) = configs.first() {
+            for entry in &config.entries {
+                if let Some(value) = &entry.value {
+                    result.insert(entry.name.to_string(), value.to_string());
                 }
             }
         }
         Ok(result)
-    }
-
-    pub fn list_principals(&self) -> Result<Vec<String>> {
-        // Note: This is a simplified version. In a real implementation,
-        // you would need to use the Kafka ACL API to list principals
-        let mut principals = Vec::new();
-
-        // For demonstration, we'll just return some dummy principals
-        // In a real implementation, you would query the ACL API
-        principals.push("User:admin".to_string());
-        principals.push("User:app1".to_string());
-        principals.push("User:app2".to_string());
-
-        Ok(principals)
-    }
-
-    pub fn get_principal_acls(&self, principal: &str) -> Result<Vec<String>> {
-        // Note: This is a simplified version. In a real implementation,
-        // you would need to use the Kafka ACL API to get ACLs for a principal
-        let mut acls = Vec::new();
-
-        // For demonstration, we'll return some dummy ACLs
-        acls.push(format!("{} ALLOW READ TOPIC test-topic", principal));
-        acls.push(format!("{} ALLOW WRITE TOPIC test-topic", principal));
-        acls.push(format!("{} ALLOW DESCRIBE TOPIC test-topic", principal));
-
-        Ok(acls)
     }
 
     pub async fn consume_topic_messages(
