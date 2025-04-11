@@ -39,6 +39,8 @@ struct App {
     tail_scroll: u16,
     tail_running: bool,
     tail_topic: Option<String>,
+    // Flag to indicate that the topic has changed and needs updating
+    topic_changed: bool,
 }
 
 enum AppState {
@@ -65,6 +67,8 @@ impl App {
             tail_scroll: 0,
             tail_running: false,
             tail_topic: None,
+            // Initialize the topic_changed flag
+            topic_changed: false,
         };
 
         Ok(app)
@@ -271,6 +275,12 @@ impl App {
 
     fn apply_filter(&mut self) {
         if let AppState::Topics = self.state {
+            // Store the currently selected topic name before applying the filter
+            let old_selected_topic = self
+                .selected_topic_index
+                .and_then(|idx| self.filtered_topics.get(idx))
+                .cloned();
+
             if self.filter_input.is_empty() {
                 self.filtered_topics = self.topics.clone();
             } else {
@@ -281,6 +291,7 @@ impl App {
                     .cloned()
                     .collect();
             }
+
             // Reset selection if it's out of bounds
             if let Some(idx) = self.selected_topic_index {
                 if idx >= self.filtered_topics.len() {
@@ -292,6 +303,17 @@ impl App {
                 }
             } else if !self.filtered_topics.is_empty() {
                 self.selected_topic_index = Some(0);
+            }
+
+            // Get the newly selected topic name
+            let new_selected_topic = self
+                .selected_topic_index
+                .and_then(|idx| self.filtered_topics.get(idx))
+                .cloned();
+
+            // If the selected topic has changed, set the flag to update later
+            if old_selected_topic != new_selected_topic {
+                self.topic_changed = true;
             }
         }
     }
@@ -389,6 +411,15 @@ fn main() -> Result<()> {
                 // Call on_key in the async runtime
                 runtime.block_on(app.on_key(key.code));
             }
+        }
+
+        // Check if we need to update the topic config and tail
+        if app.topic_changed {
+            runtime.block_on(async {
+                app.update_topic_config().await;
+                app.start_tail().await;
+            });
+            app.topic_changed = false;
         }
 
         // Update the last refresh time
