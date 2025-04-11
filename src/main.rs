@@ -59,6 +59,7 @@ impl App {
             state: AppState::Topics,
             filter_input: String::new(),
             filter_mode: false,
+
             // Initialize live tail fields
             tail_messages: Arc::new(Mutex::new(Vec::new())),
             tail_scroll: 0,
@@ -99,7 +100,7 @@ impl App {
 
         if let Some(topic) = topic_to_tail {
             // Stop any existing tail
-            self.stop_tail();
+            self.stop_tail().await;
 
             // Clear existing messages
             let mut messages = self.tail_messages.lock().await;
@@ -109,7 +110,12 @@ impl App {
             let (tx, mut rx) = mpsc::channel(100);
 
             // Start consuming messages
-            if self.kafka_client.consume_topic_messages(&topic, tx).await.is_ok() {
+            if self
+                .kafka_client
+                .consume_topic_messages(&topic, tx)
+                .await
+                .is_ok()
+            {
                 self.tail_running = true;
                 self.tail_topic = Some(topic.clone());
 
@@ -128,7 +134,11 @@ impl App {
         }
     }
 
-    fn stop_tail(&mut self) {
+    async fn stop_tail(&mut self) {
+        if let Some(topic) = &self.tail_topic {
+            // Stop the consumer for this topic
+            self.kafka_client.stop_consumer(topic).await;
+        }
         self.tail_running = false;
         self.tail_topic = None;
     }
@@ -136,10 +146,14 @@ impl App {
     async fn on_key(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('Q') => {
+                // Stop all consumers before quitting
+                self.kafka_client.stop_all_consumers().await;
             }
-            KeyCode::Char('b') => if let AppState::TopicDetail = self.state {
-                self.state = AppState::Topics;
-            },
+            KeyCode::Char('b') => {
+                if let AppState::TopicDetail = self.state {
+                    self.state = AppState::Topics;
+                }
+            }
             KeyCode::Char('T') => {
                 self.state = AppState::Topics;
                 self.filter_mode = false;
@@ -222,19 +236,21 @@ impl App {
                     }
                 }
             },
-            KeyCode::Enter => if let AppState::Topics = self.state {
-                if let Some(idx) = self.selected_topic_index {
-                    if let Some(topic) = self.filtered_topics.get(idx) {
-                        if let Ok(config) = self.kafka_client.get_topic_config(topic).await {
-                            let config_vec: Vec<(String, String)> =
-                                config.into_iter().collect();
-                            self.topic_config = Some(config_vec);
-                            self.selected_config_index = Some(0);
-                            self.state = AppState::TopicDetail;
+            KeyCode::Enter => {
+                if let AppState::Topics = self.state {
+                    if let Some(idx) = self.selected_topic_index {
+                        if let Some(topic) = self.filtered_topics.get(idx) {
+                            if let Ok(config) = self.kafka_client.get_topic_config(topic).await {
+                                let config_vec: Vec<(String, String)> =
+                                    config.into_iter().collect();
+                                self.topic_config = Some(config_vec);
+                                self.selected_config_index = Some(0);
+                                self.state = AppState::TopicDetail;
+                            }
                         }
                     }
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -348,6 +364,8 @@ fn main() -> Result<()> {
         if event::poll(Duration::from_millis(10))? {
             if let Event::Key(key) = event::read()? {
                 if key.code == KeyCode::Char('Q') && !app.filter_mode {
+                    // Stop all consumers before quitting
+                    runtime.block_on(app.kafka_client.stop_all_consumers());
                     break;
                 }
                 // Call on_key in the async runtime
@@ -394,8 +412,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
     } else {
         "".to_string()
     };
-    let filter = Paragraph::new(filter_text)
-        .block(Block::default().borders(Borders::ALL));
+    let filter = Paragraph::new(filter_text).block(Block::default().borders(Borders::ALL));
     f.render_widget(filter, chunks[1]);
 
     match app.state {
