@@ -70,6 +70,20 @@ impl App {
         Ok(app)
     }
 
+    async fn initialize(&mut self) -> Result<()> {
+        // Load the configuration for the initially selected topic
+        if let Some(idx) = self.selected_topic_index {
+            if let Some(topic) = self.filtered_topics.get(idx) {
+                if let Ok(config) = self.kafka_client.get_topic_config(topic).await {
+                    let config_vec: Vec<(String, String)> = config.into_iter().collect();
+                    self.topic_config = Some(config_vec);
+                    self.selected_config_index = Some(0);
+                }
+            }
+        }
+        Ok(())
+    }
+
     async fn update_topic_config(&mut self) {
         if let Some(idx) = self.selected_topic_index {
             if let Some(topic) = self.filtered_topics.get(idx) {
@@ -348,6 +362,11 @@ fn main() -> Result<()> {
 
     // Main loop
     let runtime = tokio::runtime::Runtime::new()?;
+
+    // Initialize the app with topic config
+    runtime.block_on(app.initialize())?;
+    runtime.block_on(app.start_tail());
+
     let mut last_refresh = std::time::Instant::now();
     let refresh_interval = Duration::from_millis(100); // Refresh every 100ms
 
@@ -359,7 +378,6 @@ fn main() -> Result<()> {
         // Draw the UI
         terminal.draw(|f| ui(f, &app))?;
 
-        runtime.block_on(app.start_tail());
         // Handle input with a timeout
         if event::poll(Duration::from_millis(10))? {
             if let Event::Key(key) = event::read()? {
