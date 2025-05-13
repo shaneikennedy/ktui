@@ -7,7 +7,7 @@ edition = "2024"
 rdkafka = "0.37"
 crossterm = "0.29"
 anyhow = "1.0"
-tokio = { version = "1.36", features = ["full"] }
+tokio = { version = "1.45", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
