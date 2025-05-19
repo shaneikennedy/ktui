@@ -9,13 +9,12 @@ use rdkafka::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 
 pub struct KafkaClient {
     admin_client: AdminClient<rdkafka::client::DefaultClientContext>,
     bootstrap_servers: String,
-    // Track active consumers
     active_consumers: Arc<Mutex<HashMap<String, Arc<StreamConsumer>>>>,
 }
 
@@ -35,7 +34,6 @@ impl KafkaClient {
         })
     }
 
-    // Helper method to log errors to file
     pub fn list_topics(&self) -> Result<Vec<String>> {
         let metadata = self
             .admin_client
@@ -66,20 +64,16 @@ impl KafkaClient {
         Ok(result)
     }
 
-    // Stop a specific consumer by topic name
     pub async fn stop_consumer(&self, topic: &str) {
         let mut consumers = self.active_consumers.lock().await;
         if let Some(consumer) = consumers.remove(topic) {
-            // Unsubscribe from the topic
             consumer.unsubscribe();
         }
     }
 
-    // Stop all active consumers
     pub async fn stop_all_consumers(&self) {
         let mut consumers = self.active_consumers.lock().await;
         for (_, consumer) in consumers.drain() {
-            // Unsubscribe from the topic
             consumer.unsubscribe();
         }
     }
@@ -89,7 +83,6 @@ impl KafkaClient {
         topic: &str,
         tx: mpsc::Sender<String>,
     ) -> Result<(), KafkaError> {
-        // First, stop any existing consumer for this topic
         self.stop_consumer(topic).await;
 
         let mut consumer_config = ClientConfig::new();
@@ -105,15 +98,12 @@ impl KafkaClient {
 
         let consumer: StreamConsumer = consumer_config.create()?;
 
-        // Subscribe to the topic
         consumer.subscribe(&[topic])?;
 
-        // Store the consumer in our active consumers map
         let consumer_arc = Arc::new(consumer);
         let mut consumers = self.active_consumers.lock().await;
         consumers.insert(topic.to_string(), Arc::clone(&consumer_arc));
 
-        // Start consuming messages in a separate task
         let consumer_clone = Arc::clone(&consumer_arc);
 
         tokio::spawn(async move {
@@ -127,7 +117,6 @@ impl KafkaClient {
                         }
                     }
                     Err(_) => {
-                        // Completely ignore all errors - don't log anything
                         continue;
                     }
                 }

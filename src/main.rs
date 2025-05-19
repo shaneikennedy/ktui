@@ -1,26 +1,27 @@
 mod kafka;
 
 use anyhow::Result;
+use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
+use ratatui::{
+    Frame, Terminal,
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    text::Span,
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
 use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
 use tokio::sync::Mutex;
-use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::Span,
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
-    Frame, Terminal,
-};
+use tokio::sync::mpsc;
 
 use kafka::KafkaClient;
 
@@ -319,7 +320,6 @@ impl App {
     }
 }
 
-// Add a function to restore terminal state
 fn restore_terminal() {
     let _ = disable_raw_mode();
     let mut stdout = io::stdout();
@@ -328,7 +328,16 @@ fn restore_terminal() {
     let _ = crossterm::cursor::Show;
 }
 
+#[derive(PartialEq, Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Bootstrap server url, e.g localhost:9092
+    #[arg(short, long)]
+    bootstrap_servers: Option<String>,
+}
+
 fn main() -> Result<()> {
+    let args = Args::parse();
     // Set up panic hook to restore terminal state
     let panic_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -345,8 +354,10 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create Kafka client with error handling
-    let kafka_client = match KafkaClient::new("localhost:9092") {
+    let bootstrap_servers = args
+        .bootstrap_servers
+        .unwrap_or(String::from("localhost:9092"));
+    let kafka_client = match KafkaClient::new(bootstrap_servers.as_str()) {
         Ok(client) => client,
         Err(e) => {
             // Log error to file
@@ -379,28 +390,17 @@ fn main() -> Result<()> {
         }
     };
 
-    // Create app state
     let mut app = App::new(kafka_client)?;
 
-    // Main loop
     let runtime = tokio::runtime::Runtime::new()?;
 
     // Initialize the app with topic config
     runtime.block_on(app.initialize())?;
     runtime.block_on(app.start_tail());
 
-    let mut last_refresh = std::time::Instant::now();
-    let refresh_interval = Duration::from_millis(100); // Refresh every 100ms
-
     loop {
-        // Check if it's time to refresh the UI
-        let now = std::time::Instant::now();
-        let should_refresh = now.duration_since(last_refresh) >= refresh_interval;
-
-        // Draw the UI
         terminal.draw(|f| ui(f, &app))?;
 
-        // Handle input with a timeout
         if event::poll(Duration::from_millis(10))? {
             if let Event::Key(key) = event::read()? {
                 if key.code == KeyCode::Char('Q') && !app.filter_mode {
@@ -420,11 +420,6 @@ fn main() -> Result<()> {
                 app.start_tail().await;
             });
             app.topic_changed = false;
-        }
-
-        // Update the last refresh time
-        if should_refresh {
-            last_refresh = now;
         }
     }
 
@@ -455,7 +450,6 @@ fn ui(f: &mut Frame, app: &App) {
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, chunks[0]);
 
-    // Filter input
     let filter_text = if app.filter_mode {
         format!("Filter: {}", app.filter_input)
     } else {
@@ -496,13 +490,11 @@ fn ui(f: &mut Frame, app: &App) {
 
             f.render_widget(topics, content_chunks[0]);
 
-            // Right panel split into two stacked panels
             let right_panels = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .split(content_chunks[1]);
 
-            // Topic config on the top right
             let config_text = if let Some(config) = &app.topic_config {
                 config
                     .iter()
@@ -523,7 +515,6 @@ fn ui(f: &mut Frame, app: &App) {
 
             f.render_widget(config, right_panels[0]);
 
-            // Live tail of topic data on the bottom right
             let tail_text = if let Some(idx) = app.selected_topic_index {
                 if let Some(topic) = app.filtered_topics.get(idx) {
                     if app.tail_running {
@@ -579,8 +570,7 @@ fn ui(f: &mut Frame, app: &App) {
                         } else {
                             Style::default()
                         };
-                        ListItem::new(Span::raw(format!("{}: {}", k, v)))
-                            .style(style)
+                        ListItem::new(Span::raw(format!("{}: {}", k, v))).style(style)
                     })
                     .collect();
 
