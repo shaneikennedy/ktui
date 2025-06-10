@@ -1,6 +1,6 @@
 mod kafka;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
@@ -51,7 +51,7 @@ enum AppState {
 
 impl App {
     fn new(kafka_client: KafkaClient) -> Result<Self> {
-        let topics = kafka_client.list_topics()?;
+        let topics = kafka_client.list_topics().context("Problem starting live tail")?;
         let app = App {
             kafka_client,
             topics: topics.clone(),
@@ -372,9 +372,9 @@ fn main() -> Result<()> {
 
     let app = App::new(kafka_client);
     if app.is_err() {
-            restore_terminal();
-            panic!("Problem creating app");
-}
+        restore_terminal();
+        panic!("Problem creating app: {:?}", app.err().unwrap());
+    }
     let mut app = app.unwrap();
 
     let runtime = tokio::runtime::Runtime::new()?;

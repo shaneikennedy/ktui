@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rdkafka::admin::{AdminClient, AdminOptions, ResourceSpecifier};
 use rdkafka::config::ClientConfig;
 use rdkafka::{
@@ -38,7 +38,7 @@ impl KafkaClient {
         let metadata = self
             .admin_client
             .inner()
-            .fetch_metadata(None, Duration::from_secs(5))?;
+            .fetch_metadata(None, Duration::from_secs(5)).context("Problem fetching metadata")?;
         let topics: Vec<String> = metadata
             .topics()
             .iter()
