@@ -364,38 +364,27 @@ fn main() -> Result<()> {
             let mut file = File::create("ktui_errors.log")?;
             writeln!(file, "Failed to connect to Kafka: {}", e)?;
 
-            // Display error and wait for user input
-            terminal.draw(|f| {
-                let size = f.area();
-                let block = Block::default()
-                    .title("Kafka Connection Error")
-                    .borders(Borders::ALL);
-                let error_text = format!(
-                    "Failed to connect to Kafka: {}\n\nError logged to ktui_errors.log\n\nPress any key to exit...",
-                    e
-                );
-                let paragraph = Paragraph::new(error_text)
-                    .block(block)
-                    .wrap(Wrap { trim: true });
-                f.render_widget(paragraph, size);
-            })?;
+            restore_terminal();
+            panic!("Problem creating kafka client");
 
-            // Wait for a key press
-            if let Event::Key(_) = event::read()? {
-                // Restore terminal and exit
-                restore_terminal();
-                return Ok(());
-            }
-            return Ok(());
         }
     };
 
-    let mut app = App::new(kafka_client)?;
+    let app = App::new(kafka_client);
+    if app.is_err() {
+            restore_terminal();
+            panic!("Problem creating app");
+}
+    let mut app = app.unwrap();
 
     let runtime = tokio::runtime::Runtime::new()?;
 
     // Initialize the app with topic config
-    runtime.block_on(app.initialize())?;
+    let init = runtime.block_on(app.initialize());
+    if init.is_err() {
+            restore_terminal();
+            panic!("Problem initializing");
+    }
     runtime.block_on(app.start_tail());
 
     loop {
