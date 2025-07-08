@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rdkafka = "0.37"
+rdkafka = "0.38"
 crossterm = "0.29"
 anyhow = "1.0"
 tokio = { version = "1.45", features = ["full"] }
