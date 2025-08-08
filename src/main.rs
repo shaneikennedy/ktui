@@ -51,7 +51,9 @@ enum AppState {
 
 impl App {
     fn new(kafka_client: KafkaClient) -> Result<Self> {
-        let topics = kafka_client.list_topics().context("Problem starting live tail")?;
+        let topics = kafka_client
+            .list_topics()
+            .context("Problem starting live tail")?;
         let app = App {
             kafka_client,
             topics: topics.clone(),
@@ -146,7 +148,7 @@ impl App {
                     while let Some(msg) = rx.recv().await {
                         let mut messages = tail_messages.lock().await;
                         // Add topic prefix to message to ensure we know which topic it came from
-                        messages.push(format!("[{}] {}", topic_clone, msg));
+                        messages.push(format!("[{topic_clone}] {msg}"));
                     }
                 });
             }
@@ -362,11 +364,10 @@ fn main() -> Result<()> {
         Err(e) => {
             // Log error to file
             let mut file = File::create("ktui_errors.log")?;
-            writeln!(file, "Failed to connect to Kafka: {}", e)?;
+            writeln!(file, "Failed to connect to Kafka: {e}")?;
 
             restore_terminal();
             panic!("Problem creating kafka client");
-
         }
     };
 
@@ -382,8 +383,8 @@ fn main() -> Result<()> {
     // Initialize the app with topic config
     let init = runtime.block_on(app.initialize());
     if init.is_err() {
-            restore_terminal();
-            panic!("Problem initializing");
+        restore_terminal();
+        panic!("Problem initializing");
     }
     runtime.block_on(app.start_tail());
 
@@ -487,7 +488,7 @@ fn ui(f: &mut Frame, app: &App) {
             let config_text = if let Some(config) = &app.topic_config {
                 config
                     .iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
+                    .map(|(k, v)| format!("{k}: {v}"))
                     .collect::<Vec<String>>()
                     .join("\n")
             } else {
@@ -509,7 +510,7 @@ fn ui(f: &mut Frame, app: &App) {
                     if app.tail_running {
                         let messages = app.tail_messages.blocking_lock();
                         if messages.is_empty() {
-                            format!("Waiting for messages from topic: {}", topic)
+                            format!("Waiting for messages from topic: {topic}")
                         } else {
                             // Only show actual messages, not error messages
                             messages
@@ -525,7 +526,7 @@ fn ui(f: &mut Frame, app: &App) {
                                 .join("\n")
                         }
                     } else {
-                        format!("Live tail not running for topic: {}", topic)
+                        format!("Live tail not running for topic: {topic}")
                     }
                 } else {
                     "No topic selected".to_string()
@@ -559,7 +560,7 @@ fn ui(f: &mut Frame, app: &App) {
                         } else {
                             Style::default()
                         };
-                        ListItem::new(Span::raw(format!("{}: {}", k, v))).style(style)
+                        ListItem::new(Span::raw(format!("{k}: {v}"))).style(style)
                     })
                     .collect();
 

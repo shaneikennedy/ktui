@@ -38,7 +38,8 @@ impl KafkaClient {
         let metadata = self
             .admin_client
             .inner()
-            .fetch_metadata(None, Duration::from_secs(5)).context("Problem fetching metadata")?;
+            .fetch_metadata(None, Duration::from_secs(5))
+            .context("Problem fetching metadata")?;
         let topics: Vec<String> = metadata
             .topics()
             .iter()
@@ -88,7 +89,7 @@ impl KafkaClient {
         let mut consumer_config = ClientConfig::new();
         consumer_config.set_log_level(rdkafka::config::RDKafkaLogLevel::Emerg);
         consumer_config
-            .set("group.id", format!("ktui-consumer-{}", topic))
+            .set("group.id", format!("ktui-consumer-{topic}"))
             .set("bootstrap.servers", &self.bootstrap_servers)
             .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "earliest")
